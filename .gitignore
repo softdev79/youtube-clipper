@@ -1,0 +1,5 @@
+clips/
+youtube-clips/
+*.pyc
+bin/
+__pycache__/

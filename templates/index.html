@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube Clipper</title>
+<style>
+  :root { --bg:#0f0f12; --card:#1a1a20; --line:#2a2a33; --text:#ececf1; --muted:#9a9aa8; --accent:#ff3b3b; --ok:#3ccf7a; --warn:#ffb547; --blue:#5aa9ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h1 span { color: var(--accent); }
+  h2 { font-size: 1.1rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 0 0 14px; }
+  .card { background: var(--card); border:1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  input, select { background:#111116; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:1rem; }
+  input.url { flex:1; min-width: 220px; }
+  input.time { width: 110px; font-variant-numeric: tabular-nums; }
+  input.num { width: 100%; }
+  button { background: var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 16px; font-size:1rem; cursor:pointer; font-weight:600; }
+  button.ghost { background: transparent; border:1px solid var(--line); color: var(--text); font-weight:500; }
+  button.small { padding:6px 10px; font-size:.85rem; }
+  button:disabled { opacity:.5; cursor: not-allowed; }
+  .player { position:relative; width:100%; aspect-ratio:16/9; background:#000; border-radius:10px; overflow:hidden; }
+  .player iframe, .player > div { position:absolute; inset:0; width:100%; height:100%; }
+  .meta { margin: 12px 0 0; } .meta b { display:block; } .meta small { color: var(--muted); }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .chip { font-size:.75rem; padding:3px 8px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
+  .chip.on { color: var(--ok); border-color: #2b5a3f; } .chip.off { text-decoration: line-through; opacity:.6; }
+  label { display:flex; flex-direction:column; gap:6px; font-size:.85rem; color: var(--muted); }
+  label.check { flex-direction:row; align-items:center; gap:8px; color:var(--text); font-size:.95rem; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+  .bar { height: 8px; background:#111116; border-radius: 99px; overflow:hidden; margin-top:12px; }
+  .bar > i { display:block; height:100%; width:0; background: var(--accent); transition: width .3s; }
+  .msg { margin-top:10px; min-height: 1.2em; } .err { color:#ff7b7b; } .good { color: var(--ok); } .warn { color: var(--warn); }
+  .hidden { display:none !important; }
+  a.dl { display:inline-block; margin-top:10px; background: var(--ok); color:#06210f; padding:10px 16px; border-radius:8px; text-decoration:none; font-weight:700; }
+  ul.hist { list-style:none; padding:0; margin:0; } ul.hist li { padding:8px 0; border-top:1px solid var(--line); } ul.hist a { color: var(--text); }
+  canvas#timeline { width:100%; height:110px; display:block; background:#111116; border-radius:8px; cursor:pointer; margin-top:14px; }
+  .legend { font-size:.75rem; color:var(--muted); margin-top:4px; display:flex; justify-content:space-between; }
+  .moment { display:grid; grid-template-columns: auto 1fr; gap: 10px 12px; padding:12px 0; border-top:1px solid var(--line); }
+  .moment:first-child { border-top: 0; }
+  .moment input[type=checkbox] { width:18px; height:18px; margin-top:8px; accent-color: var(--accent); }
+  .mhead { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .rank { font-weight:800; color: var(--accent); min-width: 34px; }
+  .score { width:90px; height:6px; background:#111116; border-radius:99px; overflow:hidden; display:inline-block; vertical-align:middle; }
+  .score > i { display:block; height:100%; background: linear-gradient(90deg, var(--warn), var(--accent)); }
+  .why { font-size:.8rem; color: var(--muted); margin-top:6px; line-height:1.45; }
+  .why q { color:#c9c9d6; }
+  .moment.overlap { background: rgba(255,181,71,.07); }
+  .status { font-size:.8rem; color:var(--muted); }
+  .status.done a { color: var(--ok); font-weight:600; }
+  .status.error { color:#ff7b7b; }
+  .spin { display:inline-block; width:12px; height:12px; border:2px solid var(--muted); border-top-color: transparent; border-radius:50%; animation: s 1s linear infinite; vertical-align:-2px; margin-right:6px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  @media (max-width: 520px) { input.time { width: 92px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>YouTube <span>Clipper</span></h1>
+  <p class="sub">Paste a YouTube video or past live stream. Find the moments people watched and talked about most, then cut them all at once.</p>
+
+  <div class="card">
+    <form id="loadForm" class="row">
+      <input class="url" id="url" placeholder="https://www.youtube.com/watch?v=..." required>
+      <button id="loadBtn" type="submit">Load video</button>
+    </form>
+    <div class="msg" id="loadMsg"></div>
+  </div>
+
+  <div id="editor" class="hidden">
+    <div class="card">
+      <div class="player"><div id="player"></div></div>
+      <div class="meta"><b id="title"></b><small id="channel"></small></div>
+      <div class="chips" id="avail"></div>
+    </div>
+
+    <div class="card">
+      <h2>Output</h2>
+      <div class="grid" style="margin-top:10px">
+        <label>Format
+          <select id="mode"><option value="mp4">Video (MP4)</option><option value="mp3">Audio only (MP3)</option></select>
+        </label>
+        <label>Max quality
+          <select id="height"><option>360</option><option>480</option><option selected>720</option><option>1080</option><option>1440</option><option>2160</option></select>
+        </label>
+      </div>
+    </div>
+
+    <!-- ===================== AUTO: BEST MOMENTS ===================== -->
+    <div class="card">
+      <h2>🔥 Best moments (auto)</h2>
+      <p class="hint">Scores every second of the video by watch time ("Most replayed"), live-chat activity and timestamps people mention in comments, then picks the top moments. Clips never overlap.</p>
+      <div class="grid">
+        <label>How many clips
+          <input class="num" id="count" type="number" min="1" max="50" value="10">
+        </label>
+        <label>Clip length (seconds)
+          <input class="num" id="clipLen" type="number" min="5" max="600" value="30">
+        </label>
+        <label>Min gap between clips (s)
+          <input class="num" id="gap" type="number" min="0" value="15">
+        </label>
+        <label>Skip intro (minutes)
+          <input class="num" id="skip" type="number" min="0" step="0.5" value="0">
+        </label>
+      </div>
+      <div class="row" style="margin-top:14px; gap:18px">
+        <label class="check"><input type="checkbox" id="srcHeatmap" checked> 🔁 Most replayed</label>
+        <label class="check"><input type="checkbox" id="srcChat" checked> 💬 Live chat</label>
+        <label class="check"><input type="checkbox" id="srcComments" checked> 📝 Comment timestamps</label>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button type="button" id="analyzeBtn">🔍 Find best moments</button>
+        <small class="status" id="analyzeMsg"></small>
+      </div>
+
+      <div id="results" class="hidden">
+        <canvas id="timeline"></canvas>
+        <div class="legend"><span>0:00</span><span>Engagement over time (click to jump)</span><span id="durLbl"></span></div>
+        <div class="msg warn" id="notes"></div>
+
+        <div id="tagsBox" class="hidden" style="margin:6px 0 14px">
+          <div class="row" style="justify-content:space-between">
+            <b style="font-size:.95rem">#️⃣ Suggested hashtags</b>
+            <button class="ghost small" type="button" id="copyTags">Copy all</button>
+          </div>
+          <div id="tags"></div>
+          <p class="hint" style="margin:6px 0 0">Based on the video's own tags, title and what chat/comments said at these moments.</p>
+        </div>
+
+        <div class="row" style="margin:6px 0 4px; justify-content:space-between">
+          <div class="row">
+            <button class="ghost small" type="button" id="selAll">Select all</button>
+            <button class="ghost small" type="button" id="selNone">Select none</button>
+          </div>
+          <small class="status" id="selInfo"></small>
+        </div>
+        <div id="moments"></div>
+
+        <div class="row" style="margin-top:14px">
+          <button type="button" id="batchBtn">✂ Create selected clips</button>
+          <span id="zipWrap"></span>
+        </div>
+        <div class="bar"><i id="batchBar"></i></div>
+        <div class="msg" id="batchMsg"></div>
+      </div>
+    </div>
+
+    <!-- ===================== MANUAL ===================== -->
+    <div class="card">
+      <h2>Manual clip</h2>
+      <div class="grid" style="margin-top:10px">
+        <label>Start
+          <div class="row"><input class="time" id="start" value="0:00"><button class="ghost small" type="button" id="setStart" title="Use current player time">⏱ Now</button></div>
+        </label>
+        <label>End
+          <div class="row"><input class="time" id="end" value="0:30"><button class="ghost small" type="button" id="setEnd" title="Use current player time">⏱ Now</button></div>
+        </label>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="ghost" type="button" id="preview">▶ Preview</button>
+        <button type="button" id="clipBtn">✂ Create clip</button>
+        <small id="lenInfo" style="color:var(--muted)"></small>
+      </div>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="msg" id="clipMsg"></div>
+      <div id="dlWrap"></div>
+    </div>
+
+    <div class="card">
+      <b>Clips this session</b>
+      <ul class="hist" id="hist"><li style="color:var(--muted)">None yet</li></ul>
+    </div>
+  </div>
+</main>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+const $ = id => document.getElementById(id);
+let player, video = null, previewTimer = null, analysis = null;
+
+/* ---------- utils ---------- */
+function toSec(v) {
+  v = String(v).trim(); if (!v) return NaN;
+  return v.split(':').reduce((acc, p) => acc * 60 + parseFloat(p), 0);
+}
+function toStamp(s) {
+  s = Math.max(0, Math.round(s * 10) / 10);
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  let sec = (s % 60).toFixed(1).replace(/\.0$/, '');
+  sec = sec.includes('.') ? sec.padStart(4, '0') : sec.padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2,'0')}:${sec}` : `${m}:${sec}`;
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function msg(el, text, cls='') { $(el).className = 'msg ' + cls; $(el).textContent = text; }
+const post = async (u, body) => {
+  const r = await fetch(u, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Request failed'); return d;
+};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function playRange(a, b) {
+  if (!player || !(b > a)) return;
+  clearInterval(previewTimer);
+  player.seekTo(a, true); player.playVideo();
+  previewTimer = setInterval(() => { if (player.getCurrentTime() >= b) { player.pauseVideo(); clearInterval(previewTimer); } }, 200);
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+/* ---------- load ---------- */
+$('loadForm').onsubmit = async (e) => {
+  e.preventDefault();
+  $('loadBtn').disabled = true; msg('loadMsg', 'Reading video info…');
+  try {
+    const d = await post('/api/info', {url: $('url').value});
+    video = d; analysis = null; $('results').classList.add('hidden'); $('analyzeMsg').textContent = '';
+    $('title').textContent = d.title;
+    $('channel').textContent = `${d.channel || ''} · ${toStamp(d.duration)}${d.was_live ? ' · past live stream' : ''}`;
+    $('avail').innerHTML = [
+      [d.has_heatmap, '🔁 Most-replayed data'], [d.has_chat, '💬 Live-chat replay'],
+      [(d.comment_count || 0) > 0, `📝 ${d.comment_count ?? 0} comments`]
+    ].map(([ok, t]) => `<span class="chip ${ok ? 'on' : 'off'}">${t}</span>`).join('') +
+      (d.is_live ? '<span class="chip off" style="text-decoration:none;color:var(--warn)">⚠ still live: analyze after it ends</span>' : '');
+    $('srcHeatmap').checked = d.has_heatmap; $('srcChat').checked = d.has_chat; $('srcComments').checked = (d.comment_count || 0) > 0;
+    $('start').value = '0:00'; $('end').value = toStamp(Math.min(30, d.duration || 30));
+    $('editor').classList.remove('hidden'); msg('loadMsg', '');
+    if (player && player.loadVideoById) player.cueVideoById(d.id);
+    else player = new YT.Player('player', { videoId: d.id, playerVars: { rel: 0, modestbranding: 1 } });
+    updateLen();
+  } catch (err) { msg('loadMsg', err.message, 'err'); }
+  $('loadBtn').disabled = false;
+};
+
+/* ---------- analyze ---------- */
+$('analyzeBtn').onclick = async () => {
+  const sources = [['srcHeatmap','heatmap'],['srcChat','chat'],['srcComments','comments']].filter(([id]) => $(id).checked).map(x => x[1]);
+  $('analyzeBtn').disabled = true;
+  $('analyzeMsg').innerHTML = '<span class="spin"></span>Starting…';
+  try {
+    const {job_id} = await post('/api/analyze', {
+      url: $('url').value, count: +$('count').value, clip_len: +$('clipLen').value,
+      gap: +$('gap').value, skip_start_min: +$('skip').value, sources });
+    while (true) {
+      await sleep(1200);
+      const j = await (await fetch('/api/job/' + job_id)).json();
+      if (j.status === 'done') { analysis = j.result; renderResults(); break; }
+      if (j.status === 'error') throw new Error(j.error);
+      $('analyzeMsg').innerHTML = `<span class="spin"></span>${esc(j.message || 'Working…')}`;
+    }
+    const a = analysis;
+    $('analyzeMsg').textContent = `Found ${a.moments.length} moment${a.moments.length === 1 ? '' : 's'} using: ${a.used.join(', ')}`;
+  } catch (err) { $('analyzeMsg').innerHTML = `<span class="err">${esc(err.message)}</span>`; }
+  $('analyzeBtn').disabled = false;
+};
+
+function renderResults() {
+  const a = analysis;
+  $('results').classList.remove('hidden');
+  $('durLbl').textContent = toStamp(a.duration);
+  const notes = [...a.notes];
+  if (a.moments.length < a.requested)
+    notes.push(`Only ${a.moments.length} of ${a.requested} non-overlapping moments fit. Try a shorter clip length or a smaller gap.`);
+  $('notes').textContent = notes.join(' ');
+  const ht = a.hashtags || {};
+  const groups = [['from_video', 'Video'], ['from_title', 'Title'], ['from_audience', 'Audience'], ['generic', 'Reach']]
+    .filter(([k]) => (ht[k] || []).length);
+  $('tagsBox').classList.toggle('hidden', !groups.length);
+  $('tags').innerHTML = groups.map(([k, label]) =>
+    `<div class="chips"><span class="chip" style="border:0;padding-left:0">${label}:</span>` +
+    ht[k].map(t => `<span class="chip on" style="cursor:pointer" title="Click to copy">${esc(t)}</span>`).join('') + '</div>').join('');
+  $('tags').querySelectorAll('.chip.on').forEach(c => c.onclick = () => navigator.clipboard?.writeText(c.textContent));
+  $('moments').innerHTML = a.moments.map((m, i) => {
+    const sig = [];
+    if (m.signals.heatmap !== undefined) sig.push(`🔁 replay ${m.signals.heatmap}`);
+    if (m.chat_count !== undefined) sig.push(`💬 ${m.chat_count} chat msgs`);
+    if (m.comment_mentions !== undefined) sig.push(`📝 ${m.comment_mentions} comment mention${m.comment_mentions === 1 ? '' : 's'}`);
+    const quotes = [...(m.comment_samples || []), ...(m.chat_samples || []).slice(0, 3)]
+      .map(q => `<q>${esc(q)}</q>`).join(' · ');
+    return `<div class="moment" data-i="${i}">
+      <input type="checkbox" class="pick" checked>
+      <div>
+        <div class="mhead">
+          <span class="rank">#${m.rank}</span>
+          <input class="time ms" value="${toStamp(m.start)}"> – <input class="time me" value="${toStamp(m.end)}">
+          <button class="ghost small play" type="button">▶ Preview</button>
+          <span class="score" title="Engagement score ${m.score}/100"><i style="width:${m.score}%"></i></span><small class="status">${m.score}</small>
+        </div>
+        <div class="why">${sig.join(' · ')}${quotes ? '<br>' + quotes : ''}</div>
+        <div class="status cstat"></div>
+      </div></div>`;
+  }).join('') || '<p class="hint">No moments found.</p>';
+  document.querySelectorAll('.moment').forEach(row => {
+    row.querySelector('.play').onclick = () => playRange(toSec(row.querySelector('.ms').value), toSec(row.querySelector('.me').value));
+    row.querySelectorAll('input').forEach(inp => inp.oninput = () => { checkOverlaps(); drawTimeline(); });
+  });
+  $('zipWrap').innerHTML = ''; $('batchBar').style.width = '0'; msg('batchMsg', '');
+  checkOverlaps(); drawTimeline();
+}
+
+function selectedRanges() {
+  return [...document.querySelectorAll('.moment')].filter(r => r.querySelector('.pick').checked).map(r => ({
+    row: r, start: toSec(r.querySelector('.ms').value), end: toSec(r.querySelector('.me').value)
+  }));
+}
+function checkOverlaps() {
+  const sel = selectedRanges();
+  document.querySelectorAll('.moment').forEach(r => r.classList.remove('overlap'));
+  let bad = 0;
+  const sorted = [...sel].sort((x, y) => x.start - y.start);
+  for (let i = 0; i < sorted.length; i++) {
+    const c = sorted[i];
+    if (!(c.end > c.start)) { c.row.classList.add('overlap'); bad++; }
+    if (i && c.start < sorted[i - 1].end) { c.row.classList.add('overlap'); sorted[i - 1].row.classList.add('overlap'); bad++; }
+  }
+  const total = sel.reduce((t, c) => t + Math.max(0, c.end - c.start), 0);
+  $('selInfo').textContent = `${sel.length} selected · ${toStamp(total)} total` + (bad ? ' · ⚠ fix overlapping/invalid times' : '');
+  $('batchBtn').disabled = !sel.length || bad > 0;
+  $('batchBtn').textContent = `✂ Create ${sel.length} clip${sel.length === 1 ? '' : 's'}`;
+}
+$('copyTags').onclick = async () => {
+  const all = (analysis?.hashtags?.all || []).join(' ');
+  try { await navigator.clipboard.writeText(all); $('copyTags').textContent = 'Copied ✓'; }
+  catch { prompt('Copy these hashtags:', all); }
+  setTimeout(() => $('copyTags').textContent = 'Copy all', 1500);
+};
+$('selAll').onclick = () => { document.querySelectorAll('.pick').forEach(c => c.checked = true); checkOverlaps(); drawTimeline(); };
+$('selNone').onclick = () => { document.querySelectorAll('.pick').forEach(c => c.checked = false); checkOverlaps(); drawTimeline(); };
+
+/* ---------- timeline ---------- */
+function drawTimeline() {
+  if (!analysis) return;
+  const cv = $('timeline'), dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
+  const D = analysis.duration, tl = analysis.timeline, n = tl.length;
+  // selected clip ranges
+  selectedRanges().forEach((c, idx) => {
+    const x0 = c.start / D * W, x1 = Math.max(x0 + 2, c.end / D * W);
+    ctx.fillStyle = 'rgba(255,59,59,.22)'; ctx.fillRect(x0, 0, x1 - x0, H);
+    ctx.fillStyle = '#ff3b3b'; ctx.fillRect(x0, 0, x1 - x0, 3);
+  });
+  // engagement curve
+  ctx.beginPath(); ctx.moveTo(0, H);
+  tl.forEach((v, i) => ctx.lineTo(i / (n - 1) * W, H - 6 - v * (H - 14)));
+  ctx.lineTo(W, H); ctx.closePath();
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, 'rgba(255,181,71,.55)'); g.addColorStop(1, 'rgba(255,181,71,.05)');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.beginPath(); tl.forEach((v, i) => { const x = i / (n - 1) * W, y = H - 6 - v * (H - 14); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.strokeStyle = '#ffb547'; ctx.lineWidth = 1.5; ctx.stroke();
+  // rank labels
+  ctx.font = 'bold 11px system-ui'; ctx.fillStyle = '#fff';
+  analysis.moments.forEach(m => ctx.fillText('#' + m.rank, Math.min(W - 22, m.start / D * W + 2), 15));
+}
+$('timeline').onclick = (e) => {
+  if (!analysis || !player) return;
+  const r = e.target.getBoundingClientRect();
+  player.seekTo((e.clientX - r.left) / r.width * analysis.duration, true); player.playVideo();
+};
+window.addEventListener('resize', drawTimeline);
+
+/* ---------- batch ---------- */
+$('batchBtn').onclick = async () => {
+  const sel = selectedRanges();
+  if (!sel.length) return;
+  $('batchBtn').disabled = true; $('zipWrap').innerHTML = '';
+  document.querySelectorAll('.cstat').forEach(s => { s.className = 'status cstat'; s.textContent = ''; });
+  msg('batchMsg', `Creating ${sel.length} clips (2 at a time)…`);
+  try {
+    const {job_id} = await post('/api/batch', {
+      url: $('url').value, mode: $('mode').value, height: $('height').value,
+      clips: sel.map(c => ({start: c.start, end: c.end})) });
+    // server sorts clips by start time; map back to rows the same way
+    const rows = [...sel].sort((a, b) => a.start - b.start).map(c => c.row);
+    while (true) {
+      await sleep(1500);
+      const j = await (await fetch('/api/job/' + job_id)).json();
+      let finished = 0;
+      j.clips.forEach((c, i) => {
+        const st = rows[i].querySelector('.cstat');
+        if (c.status === 'done') {
+          finished++; st.className = 'status cstat done';
+          if (!st.dataset.added) { addHist(c.file); st.dataset.added = 1; }
+          st.innerHTML = `✅ <a href="/clips/${encodeURIComponent(c.file)}">${esc(c.file)}</a>`;
+        } else if (c.status === 'error') {
+          finished++; st.className = 'status cstat error'; st.textContent = '❌ ' + c.error;
+        } else if (c.status !== 'queued') {
+          st.className = 'status cstat';
+          st.innerHTML = `<span class="spin"></span>${c.status === 'processing' ? 'cutting…' : c.status.startsWith('retrying') ? 'YouTube busy, ' + c.status + '…' : 'downloading ' + (c.progress || 0) + '%'}`;
+        } else { st.textContent = '⏳ queued'; }
+      });
+      $('batchBar').style.width = Math.max(4, finished / j.clips.length * 100) + '%';
+      if (j.status === 'done' || j.status === 'error') {
+        const ok = j.clips.filter(c => c.status === 'done').length;
+        msg('batchMsg', `${ok}/${j.clips.length} clips ready.` + (j.error ? ' ' + j.error : ''), ok ? 'good' : 'err');
+        if (j.zip) { $('zipWrap').innerHTML = `<a class="dl" style="margin:0" href="/clips/${encodeURIComponent(j.zip)}">⬇ Download all (ZIP)</a>`; addHist(j.zip); }
+        break;
+      }
+      msg('batchMsg', `${finished}/${j.clips.length} done…`);
+    }
+  } catch (err) { msg('batchMsg', err.message, 'err'); }
+  checkOverlaps();
+};
+
+/* ---------- manual ---------- */
+function updateLen() {
+  const a = toSec($('start').value), b = toSec($('end').value);
+  $('lenInfo').textContent = (b > a) ? `Clip length: ${toStamp(b - a)}` : 'End must be after start';
+}
+$('setStart').onclick = () => { if (player?.getCurrentTime) { $('start').value = toStamp(player.getCurrentTime()); updateLen(); } };
+$('setEnd').onclick   = () => { if (player?.getCurrentTime) { $('end').value = toStamp(player.getCurrentTime()); updateLen(); } };
+$('start').oninput = $('end').oninput = updateLen;
+$('preview').onclick = () => playRange(toSec($('start').value), toSec($('end').value));
+
+$('clipBtn').onclick = async () => {
+  $('clipBtn').disabled = true; $('dlWrap').innerHTML = ''; $('bar').style.width = '3%';
+  msg('clipMsg', 'Starting…');
+  try {
+    const d = await post('/api/clip', { url: $('url').value, start: $('start').value, end: $('end').value,
+      mode: $('mode').value, height: $('height').value, duration: video?.duration });
+    while (true) {
+      await sleep(1000);
+      const j = await (await fetch('/api/job/' + d.job_id)).json();
+      if (j.status === 'done') {
+        $('bar').style.width = '100%'; msg('clipMsg', 'Clip ready!', 'good');
+        $('dlWrap').innerHTML = `<a class="dl" href="/clips/${encodeURIComponent(j.file)}">⬇ Download ${esc(j.file)}</a>`;
+        addHist(j.file); break;
+      }
+      if (j.status === 'error') throw new Error(j.error);
+      $('bar').style.width = Math.max(5, j.progress || 0) + '%';
+      msg('clipMsg', j.status === 'processing' ? 'Cutting & encoding…' : `Downloading section… ${j.progress || 0}%`);
+    }
+  } catch (err) { msg('clipMsg', err.message, 'err'); $('bar').style.width = '0'; }
+  $('clipBtn').disabled = false;
+};
+
+function addHist(name) {
+  const ul = $('hist'); if (ul.firstElementChild?.style.color) ul.innerHTML = '';
+  const li = document.createElement('li'); const a = document.createElement('a');
+  a.href = '/clips/' + encodeURIComponent(name); a.textContent = name; li.appendChild(a); ul.prepend(li);
+}
+</script>
+</body>
+</html>

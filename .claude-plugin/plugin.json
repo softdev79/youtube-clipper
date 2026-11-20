@@ -1,0 +1,10 @@
+{
+  "name": "youtube-clipper",
+  "version": "1.0.0",
+  "description": "Find the most-watched and most-talked-about moments of a YouTube video or past live stream (Most-replayed heatmap, live-chat spikes, comment timestamps), cut many non-overlapping clips at once, and suggest hashtags.",
+  "author": {
+    "name": "softdev79"
+  },
+  "license": "MIT",
+  "keywords": ["youtube", "clips", "shorts", "highlights", "live-stream", "hashtags", "yt-dlp"]
+}

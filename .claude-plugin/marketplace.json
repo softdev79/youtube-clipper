@@ -1,0 +1,14 @@
+{
+  "name": "youtube-clipper",
+  "owner": {
+    "name": "softdev79"
+  },
+  "description": "YouTube Clipper: auto-find the best moments of YouTube videos and live streams and turn them into clips with hashtags.",
+  "plugins": [
+    {
+      "name": "youtube-clipper",
+      "source": "./",
+      "description": "Auto-find the best moments of a YouTube video / stream, cut many clips at once and suggest hashtags."
+    }
+  ]
+}
