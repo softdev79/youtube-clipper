@@ -70,7 +70,8 @@ For each chosen range: `python "CLI" frames "<URL>" --start <start> --end <end> 
 
 - **Title card** (`title`, max ~7 words) in the audience's language and script (Hindi creators -> Roman Hinglish). Curiosity or emotion, 1-2 emoji, no clickbait that the clip doesn't pay off. `subtitle` adds context (e.g. "GTA 6 LIVE 🔥").
 - **Cold open** `hook` (<= 3 s, inside the clip): use when the payoff line/reaction is strong and the first seconds are slow. It plays first, then the story from the start.
-- **Captions: always** (most people watch muted). Give a `captions` list `[start, end, text]` with absolute times from the transcript (`transcript.json` has word times: `[[seconds, word], ...]`), chunks <= 5 words, in the audience's reading script (convert Devanagari Hindi to Roman Hinglish yourself), key words in CAPS, profanity masked (`sh*t`). `"captions": true` burns the raw transcript text instead (only if it's already in the right script).
+- **Captions: always** (most people watch muted). Give a `captions` list `[start, end, text]` with absolute times from the transcript (`transcript.json` has word times: `[[seconds, word], ...]`), chunks <= 5 words, in the audience's reading script (convert Devanagari Hindi to Roman Hinglish yourself), key words in CAPS, profanity masked (`sh*t`). `"captions": true` burns the raw transcript text instead (only if it's already in the right script). Captions sit in the blurred band under the video, never on the picture.
+- **Music** (`"music": true` per reel): a soft generated lo-fi bed (no copyright claims), ducked under speech. Use it when the user asks for background music; `"music": "path.mp3"` uses their own track, `"music_volume"` (default 0.30) sets the level.
 
 Write `youtube-clips/<id>/plan.json`:
 ```json
