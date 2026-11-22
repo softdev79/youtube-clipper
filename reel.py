@@ -11,8 +11,9 @@ A reel spec (one entry of plan["reels"]):
              {"from": 12, "mode": "stack", "cam": [0.763, 0.005, 0.233, 0.279]}],
                                                     # cam = facecam box as fractions [x, y, w, h]
   "hook": ["5:19:25", "5:19:28"],                   # optional cold open shown first (inside start-end)
-  "captions": true                                  # true = auto from transcript, false, or
+  "captions": true,                                 # true = auto from transcript, false, or
                                                     # [["5:18:22.5", "5:18:24", "text"], ...]
+  "music": true                                     # optional: generated lo-fi bed (or a file path), ducked under speech
 }
 plan = {"credit": "Mythpat • GTA 6 Launch Stream", "reels": [spec, ...]}
 """
