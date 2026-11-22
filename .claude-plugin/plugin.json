@@ -1,10 +1,10 @@
 {
   "name": "youtube-clipper",
-  "version": "1.0.0",
-  "description": "Find the most-watched and most-talked-about moments of a YouTube video or past live stream (Most-replayed heatmap, live-chat spikes, comment timestamps), cut many non-overlapping clips at once, and suggest hashtags.",
+  "version": "1.2.0",
+  "description": "Find the most-watched and most-talked-about moments of a YouTube video or past live stream (Most-replayed heatmap, live-chat spikes, comment timestamps), cut many non-overlapping clips at once, turn them into vertical reels, find trending hashtags, predict the best time to post and publish to YouTube Shorts and Instagram Reels.",
   "author": {
     "name": "softdev79"
   },
   "license": "MIT",
-  "keywords": ["youtube", "clips", "shorts", "highlights", "live-stream", "hashtags", "yt-dlp"]
+  "keywords": ["youtube", "clips", "shorts", "highlights", "live-stream", "hashtags", "yt-dlp", "instagram", "reels", "scheduler"]
 }

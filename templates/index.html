@@ -98,8 +98,11 @@
         <label>How many clips
           <input class="num" id="count" type="number" min="1" max="50" value="10">
         </label>
-        <label>Clip length (seconds)
-          <input class="num" id="clipLen" type="number" min="5" max="600" value="30">
+        <label title="When 'Keep full context' is on, this is the LONGEST a clip may be; each clip runs from the setup to the payoff.">Clip length (seconds)
+          <input class="num" id="clipLen" type="number" min="5" max="600" value="60">
+        </label>
+        <label title="Reads the video's captions so clips start before the setup and end after the payoff, instead of a fixed length.">
+          <input type="checkbox" id="smart" checked> 🧠 Keep full context (auto length, max = clip length)
         </label>
         <label>Min gap between clips (s)
           <input class="num" id="gap" type="number" min="0" value="15">
@@ -243,7 +246,7 @@ $('analyzeBtn').onclick = async () => {
   try {
     const {job_id} = await post('/api/analyze', {
       url: $('url').value, count: +$('count').value, clip_len: +$('clipLen').value,
-      gap: +$('gap').value, skip_start_min: +$('skip').value, sources });
+      gap: +$('gap').value, skip_start_min: +$('skip').value, sources, smart: $('smart').checked });
     while (true) {
       await sleep(1200);
       const j = await (await fetch('/api/job/' + job_id)).json();

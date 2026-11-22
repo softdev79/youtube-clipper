@@ -1,3 +1,9 @@
 flask>=3.0
 yt-dlp>=2026.10.26
 imageio-ffmpeg>=0.5
+Pillow>=10.0
+requests>=2.31
+tzdata>=2024.1
+edge-tts>=7.0
+numpy>=1.24
+# optional, better dubbing background (removes the original voice, keeps game/music): pip install demucs
