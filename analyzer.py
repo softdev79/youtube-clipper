@@ -172,8 +172,32 @@ def pick_moments(score, D, n_clips, clip_len, gap, skip_start):
 
 
 # ---------------------------------------------------------------- main entry
+def context_moments(cands, score, utts, n_clips, gap, min_len, max_len, D):
+    """Expand candidate peaks to natural speech boundaries (setup -> payoff). Peaks that land in the
+    same story are merged into one clip instead of producing two half-stories."""
+    from transcript import snap_bounds
+    accepted = []          # dicts: start, end, peak, peaks
+    for _s, _e, p in cands:          # cands are in score order (best first)
+        s, e = snap_bounds(utts, p, min_len, max_len, duration=D)
+        merged = False
+        for m in accepted:
+            if s < m["end"] + gap and e > m["start"] - gap:
+                ns, ne = min(s, m["start"]), max(e, m["end"])
+                if ne - ns <= max_len:
+                    m["start"], m["end"] = ns, ne
+                    m["peaks"].append(p)
+                merged = True        # either merged or would overlap -> never a duplicate clip
+                break
+        if not merged and len(accepted) < n_clips:
+            accepted.append({"start": s, "end": e, "peak": p, "peaks": [p]})
+    return [(m["start"], m["end"], m["peak"], sorted(m["peaks"])) for m in accepted]
+
+
 def analyze(url, n_clips=5, clip_len=30, gap=10, sources=("heatmap", "chat", "comments"),
-            skip_start=0, progress=lambda msg: None):
+            skip_start=0, progress=lambda msg: None, smart=True, min_len=20, max_len=90,
+            transcript_cache=None):
+    """smart=True: clip edges follow the conversation (captions) so every clip has its full context;
+    length varies between min_len and max_len. clip_len is then only the peak-detection window."""
     progress("Reading video info…")
     with yt_dlp.YoutubeDL(BASE_OPTS) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -225,14 +249,37 @@ def analyze(url, n_clips=5, clip_len=30, gap=10, sources=("heatmap", "chat", "co
     total_w = sum(WEIGHTS[k] for k in norm)
     score = [sum(WEIGHTS[k] * norm[k][i] for k in norm) / total_w for i in range(D)]
 
-    picks = pick_moments(score, D, n_clips, clip_len, gap, skip_start)
+    utts, words_info = None, None
+    if smart:
+        progress("Reading captions for context…")
+        try:
+            from transcript import fetch_words, utterances
+            words_info = fetch_words(url, info, cache=transcript_cache)
+            if words_info and words_info["words"]:
+                utts = utterances(words_info["words"])
+            else:
+                notes.append("No captions on this video, so clips use the fixed length instead of "
+                             "following the conversation.")
+        except Exception as e:  # noqa: BLE001
+            notes.append(f"Couldn't read captions ({e}); using fixed clip length.")
+
+    if utts:
+        cands = pick_moments(score, D, max(n_clips * 4, 20), clip_len, 0, skip_start)
+        picks = context_moments(cands, score, utts, n_clips, gap, min_len, max_len, D)
+    else:
+        picks = [(s, e, p, [p]) for s, e, p in pick_moments(score, D, n_clips, clip_len, gap, skip_start)]
     top = max(score) or 1
 
     moments = []
-    for rank, (s, e, p) in enumerate(picks, 1):
+    for rank, (s, e, p, peaks) in enumerate(picks, 1):
         m = {"rank": rank, "start": s, "end": e, "peak": p,
              "score": round(100 * score[p] / top),
              "signals": {k: round(100 * norm[k][p]) for k in norm}}
+        if utts:
+            from transcript import text_between
+            m["peaks"] = peaks
+            m["context"] = "snapped"
+            m["transcript"] = text_between(utts, s, e)
         if chat_msgs:
             in_win = [txt for t, txt in chat_msgs if s <= t < e]
             m["chat_count"] = len(in_win)
@@ -261,6 +308,10 @@ def analyze(url, n_clips=5, clip_len=30, gap=10, sources=("heatmap", "chat", "co
         "id": info.get("id"),
         "url": url,
         "clip_len": clip_len,
+        "smart": bool(utts),
+        "min_len": min_len if utts else None,
+        "max_len": max_len if utts else None,
+        "caption_lang": words_info["lang"] if utts else None,
         "title": info.get("title"),
         "duration": D,
         "used": used,

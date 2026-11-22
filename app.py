@@ -45,7 +45,7 @@ def run_single(job_id, url, start, end, mode, height):
         job.update(status="error", error=clean_err(e))
 
 
-def run_analyze(job_id, url, n, clip_len, gap, sources, skip_start):
+def run_analyze(job_id, url, n, clip_len, gap, sources, skip_start, smart=True):
     job = jobs[job_id]
 
     def prog(msg):
@@ -53,7 +53,11 @@ def run_analyze(job_id, url, n, clip_len, gap, sources, skip_start):
 
     try:
         job["status"] = "running"
-        job["result"] = analyzer.analyze(url, n, clip_len, gap, sources, skip_start, prog)
+        if smart:   # clip_len = longest allowed clip; edges follow the conversation
+            job["result"] = analyzer.analyze(url, n, min(30, clip_len), gap, sources, skip_start, prog,
+                                             smart=True, min_len=min(20, clip_len), max_len=clip_len)
+        else:
+            job["result"] = analyzer.analyze(url, n, clip_len, gap, sources, skip_start, prog, smart=False)
         job["status"] = "done"
     except Exception as e:  # noqa: BLE001
         job.update(status="error", error=clean_err(e))
@@ -107,7 +111,8 @@ def analyze_route():
         return jsonify(error="Pick at least one signal."), 400
     job_id = new_job(message="Queued…", result=None)
     threading.Thread(target=run_analyze, daemon=True,
-                     args=(job_id, url, n, clip_len, gap, sources, skip_start)).start()
+                     args=(job_id, url, n, clip_len, gap, sources, skip_start,
+                           bool(b.get("smart", True)))).start()
     return jsonify(job_id=job_id)
 
 

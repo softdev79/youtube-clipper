@@ -106,6 +106,8 @@ def video_info(url):
         "view_count": data.get("view_count"),
         "tags": data.get("tags") or [], "categories": data.get("categories") or [],
         "description": data.get("description") or "",
+        "upload_date": data.get("upload_date"),
+        "timestamp": data.get("release_timestamp") or data.get("timestamp"),
     }
 
 
@@ -174,7 +176,10 @@ def make_clip(url, start, end, mode, height, prefix, out_dir, on_progress=None):
                                    "preferredquality": "192"}]
     else:
         h = int(height)
-        opts["format"] = f"bv*[height<={h}][ext=mp4]+ba[ext=m4a]/bv*[height<={h}]+ba/b[height<={h}]/b"
+        if h > 1080:   # YouTube only offers 1440p/4K as VP9/AV1, so don't prefer the mp4 (H.264) track
+            opts["format"] = f"bv*[height<={h}]+ba/b[height<={h}]/b"
+        else:
+            opts["format"] = f"bv*[height<={h}][ext=mp4]+ba[ext=m4a]/bv*[height<={h}]+ba/b[height<={h}]/b"
         opts["merge_output_format"] = "mp4"
 
     # YouTube's CDN sometimes answers 503/403 for a stream URL. Each retry re-extracts
