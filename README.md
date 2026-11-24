@@ -156,7 +156,15 @@ Each signal is smoothed, normalised and combined. The top peaks are picked greed
 - "Most replayed" needs enough views. Chat replay needs a past live stream with replay enabled.
 - If YouTube briefly refuses a download (503/403), the clip is retried automatically, up to 4 attempts. If failures persist, run `pip install -U yt-dlp`.
 - ffmpeg is bundled through `imageio-ffmpeg`, so there's nothing extra to install.
-- Only clip content you have the right to use, such as your own videos, Creative Commons, or fair use.
+- Only clip content you have the right to use, such as your own videos, Creative Commons, or the creator's permission. Before the first download you confirm this once (`python cli.py rights --accept`, or the checkbox in the web app).
+
+## Compliance and privacy
+- [TERMS.md](TERMS.md): acceptable use (rights, AI disclosure, platform terms)
+- [PRIVACY.md](PRIVACY.md): what is stored, what is sent where, how to revoke and delete
+- [COMPLIANCE.md](COMPLIANCE.md): YouTube / Instagram / EU AI Act / India IT Rules checklist and known blockers
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): licenses of the libraries and tools it installs
+- AI-dubbed reels are labelled on the video, in the caption, and with YouTube's "altered or synthetic content" flag.
+- `python cli.py accounts --disconnect youtube` revokes access; `python cli.py forget` revokes everything and deletes all local data.
 
 ## Files
 - `clipper.py`: shared engine (ffmpeg, section download and retries, batch and ZIP, hashtags)
@@ -169,6 +177,7 @@ Each signal is smoothed, normalised and combined. The top peaks are picked greed
 - `timing.py`: reel priority and best time to post
 - `publish.py`: YouTube and Instagram sign-in, uploads, post queue
 - `cli.py`: JSON command line used by Claude
+- `compliance.py`: rights confirmation and AI-disclosure labels
 - `app.py`, `templates/index.html`: web app
 - `.claude-plugin/`, `skills/clip/SKILL.md`: Claude Code plugin and the guided clipping skill
 - `CLAUDE.md`: instructions for Claude when the repo is cloned directly

@@ -42,6 +42,10 @@ YT_SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
 YT_API = "https://www.googleapis.com/youtube/v3"
 IG_VERSION = "v25.0"
 TIMEOUT = 60
+POLICY_NOTICE = ("This tool uses YouTube API Services. By connecting, you agree to the YouTube Terms of Service "
+                 "(https://www.youtube.com/t/terms); Google's Privacy Policy (https://policies.google.com/privacy) "
+                 "applies. Tokens stay on this computer only. Revoke access any time with "
+                 "`python cli.py accounts --disconnect youtube` or at https://myaccount.google.com/permissions.")
 
 
 class PublishError(Exception):
@@ -132,6 +136,7 @@ def yt_connect(client_secret_path=None, open_browser=True, log=print):
         "client_id": c["client_id"], "redirect_uri": redirect, "response_type": "code",
         "scope": " ".join(YT_SCOPES), "access_type": "offline", "prompt": "consent",
         "code_challenge": challenge, "code_challenge_method": "S256", "state": state})
+    log(POLICY_NOTICE)
     log("Opening Google sign-in in your browser. If it doesn't open, visit:\n" + url)
     if open_browser:
         webbrowser.open(url)
@@ -206,8 +211,9 @@ def _yt_text(s, n):
 
 
 def yt_upload(path, title, description="", tags=None, publish_at=None, privacy="public",
-              category="20", made_for_kids=False, log=print):
-    """Upload a Short. publish_at (datetime/ISO) -> uploaded private now, YouTube publishes it then."""
+              category="20", made_for_kids=False, log=print, synthetic=False):
+    """Upload a Short. publish_at (datetime/ISO) -> uploaded private now, YouTube publishes it then.
+    synthetic=True sets YouTube's altered/synthetic content disclosure (AI voice or lip-sync)."""
     if not os.path.isfile(path):
         raise PublishError(f"File not found: {path}")
     title = _yt_text(title, 100)
@@ -220,7 +226,8 @@ def yt_upload(path, title, description="", tags=None, publish_at=None, privacy="
             break
         keep.append(t)
         used += len(t) + 3
-    status = {"privacyStatus": privacy, "selfDeclaredMadeForKids": bool(made_for_kids)}
+    status = {"privacyStatus": privacy, "selfDeclaredMadeForKids": bool(made_for_kids),
+              "containsSyntheticMedia": bool(synthetic)}
     if publish_at:
         when = parse_when(publish_at)
         if when > datetime.now(timezone.utc):
@@ -472,16 +479,42 @@ def accounts():
 
 
 def disconnect(platform):
-    for f in ([YT_TOKEN] if platform == "youtube" else [IG_CONF]):
+    """Revoke the grant with the platform (best effort), then delete the stored token.
+    Returns True when the platform confirmed the revoke, False when it didn't, None when nothing was stored."""
+    revoked = None
+    if platform == "youtube":
+        tok = _load(YT_TOKEN)
+        if tok:
+            t = tok.get("refresh_token") or tok.get("access_token")
+            try:
+                r = requests.post("https://oauth2.googleapis.com/revoke", data={"token": t}, timeout=TIMEOUT)
+                revoked = r.status_code == 200
+            except requests.RequestException:
+                revoked = False
+        files = [YT_TOKEN]
+    else:
+        c = _load(IG_CONF)
+        if c and c.get("host") == "graph.facebook.com":   # Facebook-login tokens can drop their own grant
+            try:
+                r = requests.delete(f"https://graph.facebook.com/{c.get('version') or IG_VERSION}/me/permissions",
+                                    params={"access_token": c["access_token"]}, timeout=TIMEOUT)
+                revoked = r.status_code == 200
+            except requests.RequestException:
+                revoked = False
+        elif c:
+            revoked = False   # Instagram-login tokens: remove the app in Instagram > Settings > Apps and websites
+        files = [IG_CONF]
+    for f in files:
         if os.path.exists(f):
             os.remove(f)
+    return revoked
 
 
 # ================================================================ queue
 def publish_one(job, log=print):
     if job["platform"] == "youtube":
         return yt_upload(job["file"], job["title"], job.get("description", ""), job.get("tags"),
-                         publish_at=job.get("at"), log=log)
+                         publish_at=job.get("at"), log=log, synthetic=bool(job.get("synthetic")))
     if job["platform"] == "instagram":
         return ig_upload(job["file"], job["caption"], log=log, cover_ms=job.get("cover_ms"))
     raise PublishError(f"Unknown platform {job['platform']}")

@@ -136,10 +136,14 @@ def title_card(path, title, subtitle="", credit="", top_y=None):
         s1 -= 4
         l1 = _wrap(title, s1, maxw, F_TITLE)
     h1 = int(s1 * 1.22)
-    fcr = ImageFont.truetype(F_SEMI, 25)
     cr = credit.upper().replace("•", "·") if credit else ""
-    track = 3
-    crw = sum(fcr.getlength(c) + track for c in cr) - track if cr else 0
+    size, track = 25, 3
+    while True:                                   # long credits (e.g. + AI label) shrink to fit the width
+        fcr = ImageFont.truetype(F_SEMI, size)
+        crw = sum(fcr.getlength(c) + track for c in cr) - track if cr else 0
+        if crw <= 960 or size <= 17:
+            break
+        size, track = size - 1, max(1, track - (size % 3 == 0))
     sub = re.sub(r"\s+", " ", subtitle or "").strip()
     block = (56 if cr else 0) + h1 * len(l1) + (58 if sub else 0)
     y = top_y if top_y is not None else int(130 + (TOP - 40 - 130 - block) / 2)
@@ -287,6 +291,8 @@ def render(src, out, spec, words=None, credit="", tmp=None, log=print, music=Non
         return None
 
     png = os.path.join(tmp, "title.png")
+    if spec.get("ai_label"):   # AI voice / lip-sync must be disclosed on the video itself (EU AI Act, India IT Rules)
+        credit = f"{credit} · {spec['ai_label']}" if credit else spec["ai_label"]
     title_card(png, spec.get("title", ""), spec.get("subtitle", ""), credit)
 
     layout = sorted(spec.get("layout") or [{"from": 0, "mode": "full"}], key=lambda s: s.get("from", 0))

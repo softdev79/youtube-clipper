@@ -18,7 +18,9 @@ Progress goes to stderr; the final result is printed to stdout as JSON.
   python cli.py dub-script URL --plan plan.json --lang hi [--voice ..] [--lipsync none|sync]   # then translate + reel
 
   python cli.py connect  youtube --client-secret client_secret.json  |  connect instagram --token TOKEN
-  python cli.py accounts [--disconnect youtube|instagram]
+  python cli.py accounts [--disconnect youtube|instagram]       # disconnect also revokes the token
+  python cli.py rights   [--accept|--withdraw]                  # confirm you own / may clip the videos
+  python cli.py forget   [--outputs clips reels]                # revoke access + delete all local data
   python cli.py trends   --keywords "gta 6,mythpat" [--today] [--ig-check 5]
   python cli.py best-times [--platforms youtube,instagram] [--tz Asia/Kolkata] [--hot]
   python cli.py plan-posts --plan plan.json --reels reels --url URL [--moments m.json] --save posts.json
@@ -77,6 +79,15 @@ def _check_url(url):
     from clipper import valid_url
     if not valid_url(url):
         fail(f"Not a YouTube video link: {url}")
+
+
+def _need_rights():
+    """Downloading needs the user's one-time confirmation that they own the video or have permission."""
+    import compliance
+    st = compliance.status()
+    if not st["accepted"]:
+        emit({"ok": False, "error": "rights_not_confirmed", "notice": st["notice"],
+              "next": "Show the notice to the user. Only if they confirm, run `python cli.py rights --accept`."}, 1)
 
 
 def cmd_info(a):
@@ -194,12 +205,14 @@ def _clip(a, moments=None):
 
 def cmd_clip(a):
     _check_url(a.url)
+    _need_rights()
     r = _clip(a)
     emit(r, 0 if r["ok"] else 1)
 
 
 def cmd_auto(a):
     _check_url(a.url)
+    _need_rights()
     res = _analyze(a)
     if not res["moments"]:
         fail("No moments found.")
@@ -278,6 +291,7 @@ def cmd_context(a):
 def cmd_frames(a):
     """Contact sheet (grid of frames with timestamps) for a time range - to see the on-screen layout."""
     _check_url(a.url)
+    _need_rights()
     import clipper
     import reel
     s, e = clipper.parse_time(a.start), clipper.parse_time(a.end)
@@ -296,6 +310,8 @@ def cmd_frames(a):
 def cmd_reel(a):
     """Download each planned range at high quality and render finished vertical reels + a ZIP."""
     _check_url(a.url)
+    _need_rights()
+    import compliance
     import zipfile
     from concurrent.futures import ThreadPoolExecutor
     import clipper
@@ -341,12 +357,14 @@ def cmd_reel(a):
                     dsrc = lipsync.apply(lip, dsrc, dubinfo["voice_track"], mixed, dsrc[:-4] + ".lips.mp4",
                                          dub.FFMPEG_EXE, log=log)
                 src = dsrc
+                rr = {**r, "ai_label": compliance.ai_label(r)}   # visible AI disclosure on the reel
                 if not isinstance(r.get("captions"), list) and r.get("captions", True) is not False:
-                    rr = {**r, "captions": dub.caption_lines(r)}
+                    rr["captions"] = dub.caption_lines(r)
             log(f"  reel {i + 1}/{len(specs)}: rendering…")
             info = reel.render(src, os.path.join(out_dir, name), rr, words, plan.get("credit", ""), log=log)
             if dubinfo:
                 info["dub"] = {k: dubinfo[k] for k in ("voice", "lines", "background")}
+                info["synthetic"] = True
             log(f"  reel {i + 1}/{len(specs)}: done ({info['seconds']} s)")
             return {"n": i + 1, "status": "done", "title": r.get("title"), "start": clipper.stamp(s),
                     "end": clipper.stamp(e), **info}
@@ -424,9 +442,33 @@ def cmd_connect(a):
 
 def cmd_accounts(a):
     pub = _pub()
+    revoked = None
     if a.disconnect:
-        pub.disconnect(a.disconnect)
-    emit({"ok": True, **pub.accounts()})
+        revoked = pub.disconnect(a.disconnect)
+    emit({"ok": True, **pub.accounts(), **({"revoked": revoked} if revoked is not None else {})})
+
+
+def cmd_rights(a):
+    """Show (or record) the user's confirmation that they own the videos they clip or have permission."""
+    import compliance
+    if a.accept and a.withdraw:
+        fail("Use --accept or --withdraw, not both.")
+    st = compliance.accept() if a.accept else compliance.revoke() if a.withdraw else compliance.status()
+    emit({"ok": True, **st, "terms": os.path.join(HERE, "TERMS.md"), "privacy": os.path.join(HERE, "PRIVACY.md")})
+
+
+def cmd_forget(a):
+    """Revoke Google/Instagram access and delete every file this tool keeps about the user."""
+    import shutil
+    pub = _pub()
+    revoked = {plat: pub.disconnect(plat) for plat in ("youtube", "instagram")}
+    removed = []
+    for d in [pub.HOME] + [os.path.abspath(x) for x in (a.outputs or [])]:
+        if os.path.isdir(d):
+            shutil.rmtree(d, ignore_errors=True)
+            removed.append(d)
+    emit({"ok": True, "revoked": revoked, "deleted": removed,
+          "note": "If the app is still listed at https://myaccount.google.com/permissions, remove it there too."})
 
 
 def _keywords(a, info=None):
@@ -498,6 +540,7 @@ def cmd_plan_posts(a):
     import timing
     import trends
     import reel as reelmod
+    import compliance
     plats = [p.strip() for p in a.platforms.split(",")]
     with open(a.plan, encoding="utf-8") as fh:
         plan = json.load(fh)
@@ -539,7 +582,8 @@ def cmd_plan_posts(a):
               if m["start"] - 5 <= st <= m["end"] + 5 or any(st <= pk <= en for pk in m.get("peaks", []))]
         an = timing.analyze_reel({**spec, "seconds": secs}, max(ms) if ms else None, trend, age, kws)
         rows.append({"name": files[i], "file": os.path.abspath(path), "seconds": round(secs, 1),
-                     "title": spec.get("title", ""), "subtitle": spec.get("subtitle", ""), **an})
+                     "title": spec.get("title", ""), "subtitle": spec.get("subtitle", ""),
+                     "ai_line": compliance.ai_post_line(spec), **an})
     hist, online = _history_and_online(plats)
     sched = timing.schedule(rows, plats, a.tz, _start(a), a.gap, style, online, hist, a.days)
     credit = plan.get("credit", "")
@@ -549,11 +593,16 @@ def cmd_plan_posts(a):
     posts = []
     for r in sched["reels"]:
         body = r["title"] + (f"\n{r['subtitle']}" if r["subtitle"] else "")
+        ai = r.get("ai_line", "")
+        if ai:
+            body += f"\n\n{ai}"
         post = {k: r[k] for k in ("name", "file", "seconds", "title", "priority", "hot", "reasons")}
+        post["synthetic"] = bool(ai)
         if "youtube" in r["slots"]:
             post["youtube"] = {"title": f"{r['title']} {' '.join(yt_tags[:2])}".strip(),
                                "description": f"{body}\n\n🎥 Credit: {credit}{src}\n\n{' '.join(yt_tags)}",
-                               "tags": list(dict.fromkeys(t.lstrip("#") for t in yt_tags + own)), **r["slots"]["youtube"]}
+                               "tags": list(dict.fromkeys(t.lstrip("#") for t in yt_tags + own)),
+                               "synthetic": bool(ai), **r["slots"]["youtube"]}
         if "instagram" in r["slots"]:
             post["instagram"] = {"caption": f"{body}\n\n🎥 {credit}\n\n{' '.join(ig_tags)}",
                                  **r["slots"]["instagram"]}
@@ -598,7 +647,8 @@ def cmd_publish(a):
                 if plat == "youtube":
                     log(f"Uploading {p['name']} to YouTube…")
                     r = pub.yt_upload(p["file"], spec["title"], spec.get("description", ""), spec.get("tags"),
-                                      publish_at=at, log=log)
+                                      publish_at=at, log=log,
+                                      synthetic=bool(spec.get("synthetic") or p.get("synthetic")))
                     spec["result"] = r
                     results.append({"reel": p["name"], **r})
                 elif at and pub.parse_when(at) > now:
@@ -768,8 +818,18 @@ def main():
     s.set_defaults(fn=cmd_connect)
 
     s = sub.add_parser("accounts", help="show connected accounts")
-    s.add_argument("--disconnect", choices=["youtube", "instagram"])
+    s.add_argument("--disconnect", choices=["youtube", "instagram"],
+                   help="revoke access with the platform and delete the stored token")
     s.set_defaults(fn=cmd_accounts)
+
+    s = sub.add_parser("rights", help="show or record the rights confirmation needed before clipping")
+    s.add_argument("--accept", action="store_true", help="the user confirms they own the video or have permission")
+    s.add_argument("--withdraw", action="store_true")
+    s.set_defaults(fn=cmd_rights)
+
+    s = sub.add_parser("forget", help="revoke platform access and delete all stored tokens, queue and settings")
+    s.add_argument("--outputs", nargs="*", help="also delete these output folders (clips, reels)")
+    s.set_defaults(fn=cmd_forget)
 
     s = sub.add_parser("trends", help="hashtags trending this week for your topic")
     s.add_argument("--keywords", help='comma-separated topics, e.g. "gta 6,mythpat"')

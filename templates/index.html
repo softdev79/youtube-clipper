@@ -31,6 +31,8 @@
   .chip.on { color: var(--ok); border-color: #2b5a3f; } .chip.off { text-decoration: line-through; opacity:.6; }
   label { display:flex; flex-direction:column; gap:6px; font-size:.85rem; color: var(--muted); }
   label.check { flex-direction:row; align-items:center; gap:8px; color:var(--text); font-size:.95rem; }
+  label.check.rights { align-items:flex-start; margin-top:12px; font-size:.85rem; color:var(--muted); }
+  label.check.rights a { color:inherit; }
   .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
   .bar { height: 8px; background:#111116; border-radius: 99px; overflow:hidden; margin-top:12px; }
   .bar > i { display:block; height:100%; width:0; background: var(--accent); transition: width .3s; }
@@ -69,6 +71,10 @@
       <button id="loadBtn" type="submit">Load video</button>
     </form>
     <div class="msg" id="loadMsg"></div>
+    <label class="check rights"><input type="checkbox" id="rights">
+      I own this video or have the creator's permission to clip and repost it, and I'll follow the
+      <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener">YouTube Terms of Service</a>.
+      AI-dubbed reels are labelled as AI-altered.</label>
   </div>
 
   <div id="editor" class="hidden">
@@ -205,6 +211,7 @@ const post = async (u, body) => {
   const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Request failed'); return d;
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+fetch('/api/rights').then(r => r.json()).then(s => { if (s.accepted) $('rights').checked = true; }).catch(() => {});
 
 function playRange(a, b) {
   if (!player || !(b > a)) return;
@@ -376,7 +383,7 @@ $('batchBtn').onclick = async () => {
   try {
     const {job_id} = await post('/api/batch', {
       url: $('url').value, mode: $('mode').value, height: $('height').value,
-      clips: sel.map(c => ({start: c.start, end: c.end})) });
+      clips: sel.map(c => ({start: c.start, end: c.end})), rights: $('rights').checked });
     // server sorts clips by start time; map back to rows the same way
     const rows = [...sel].sort((a, b) => a.start - b.start).map(c => c.row);
     while (true) {
@@ -424,7 +431,7 @@ $('clipBtn').onclick = async () => {
   msg('clipMsg', 'Starting…');
   try {
     const d = await post('/api/clip', { url: $('url').value, start: $('start').value, end: $('end').value,
-      mode: $('mode').value, height: $('height').value, duration: video?.duration });
+      mode: $('mode').value, height: $('height').value, duration: video?.duration, rights: $('rights').checked });
     while (true) {
       await sleep(1000);
       const j = await (await fetch('/api/job/' + d.job_id)).json();
