@@ -13,6 +13,7 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 
 import analyzer
 import clipper
+import compliance
 from clipper import MAX_BATCH, MAX_CLIP_SECONDS, clean_err, parse_time, valid_url
 
 CLIPS_DIR = os.path.join(clipper.BASE_DIR, "clips")
@@ -20,6 +21,18 @@ os.makedirs(CLIPS_DIR, exist_ok=True)
 
 app = Flask(__name__)
 jobs = {}
+
+
+def _rights_ok(body):
+    """The user ticks 'I own this video or have permission' once; it's remembered in ~/.youtube-clipper."""
+    if body.get("rights") is True and not compliance.accepted():
+        compliance.accept()
+    return compliance.accepted()
+
+
+@app.get("/api/rights")
+def rights_status():
+    return jsonify(compliance.status())
 
 
 def new_job(**fields):
@@ -122,6 +135,8 @@ def clip():
     url = body.get("url", "").strip()
     if not valid_url(url):
         return jsonify(error="Invalid YouTube link."), 400
+    if not _rights_ok(body):
+        return jsonify(error=compliance.NOTICE), 403
     try:
         start, end = parse_time(body.get("start", "")), parse_time(body.get("end", ""))
     except ValueError as e:
@@ -146,6 +161,8 @@ def batch():
     url = b.get("url", "").strip()
     if not valid_url(url):
         return jsonify(error="Invalid YouTube link."), 400
+    if not _rights_ok(b):
+        return jsonify(error=compliance.NOTICE), 403
     try:
         clips = clipper.validate_ranges([(c["start"], c["end"]) for c in (b.get("clips") or [])])
     except (KeyError, TypeError, ValueError) as e:

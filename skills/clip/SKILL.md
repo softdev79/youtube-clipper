@@ -23,6 +23,7 @@ The user should not need to run commands. Ask your questions, run the CLI, judge
 `python "CLI" info "<URL>"` - note `title`, `duration_hms`, `is_live`, `has_heatmap`, `has_chat`, `comment_count`.
 - `is_live` true -> stop: no chat replay / Most-replayed yet; ask again after it ends.
 - No heatmap, no chat and few comments -> warn that ranking will lean on your editorial judgment.
+- **Rights check (before any download).** `python "CLI" rights` shows whether the user has confirmed. If `accepted` is false (or a download command returns `rights_not_confirmed`), show them the `notice` text and ask in chat whether they own this video or have the creator's permission. Run `python "CLI" rights --accept` only on their own clear yes; never accept for them, and stop if they say no.
 
 ## 2. Ask the user (one AskUserQuestion call; skip what they already said)
 
@@ -124,7 +125,9 @@ Send every reel and the ZIP with the file-sending tool (e.g. SendUserFile), or g
 - Always run `python "<CLI>" publish --posts <dir>/posts.json --dry-run` first and show what will go where and when. Publishing is public and outward-facing: get an explicit "yes" for that list in chat before running it without `--dry-run`. Use `--only 1,3` for a subset and `--now` to skip the schedule.
 - YouTube posts are uploaded right away and scheduled by YouTube (publishAt). Instagram posts are queued; they go out only while `python "<CLI>" runner --loop` runs or after `runner --install` (a Windows scheduled task: ask before installing it). `queue` lists them, `queue --cancel <id>` cancels.
 - If YouTube returns `private` with a warning, the user's Google Cloud project hasn't passed the YouTube API audit: tell them to switch it to public in YouTube Studio (or apply for the audit).
+- Dubbed / lip-synced reels are AI-altered content: the renderer puts a small "AI-dubbed voice" label in the header, `plan-posts` adds an AI line to the caption and `"synthetic": true`, and `publish` sets YouTube's altered-or-synthetic flag. Never remove these, and tell the user about them in the dry-run summary.
 - Report each result link. Never post anything the user didn't approve, and never change account settings.
+- `accounts --disconnect youtube|instagram` revokes the token with the platform; `forget [--outputs <dirs>]` revokes everything and deletes all local data (ask first, it can't be undone).
 
 ## Rules
 - Context first: never deliver a reel that starts mid-setup or ends before the payoff.
